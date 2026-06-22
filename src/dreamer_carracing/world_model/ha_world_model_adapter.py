@@ -11,15 +11,13 @@ from dreamer_carracing.world_model.reward_model import RewardModel
 
 class HaWorldModelAdapter(nn.Module):
     """
-    Adapter for a Ha & Schmidhuber-style World Model:
+    Adapter around the Ha & Schmidhuber-style world model:
 
-        obs_t --VAE--> z_t
-        concat(z_t, a_t) --MDN-RNN/LSTM--> distribution over z_{t+1}
-        concat(z_{t+1}, h_{t+1}) --RewardModel--> r_t
+        obs_t -> VAE -> z_t
+        (z_t, a_t, h_t, c_t) -> MDN-RNN -> h_{t+1}, c_{t+1}, p(z_{t+1})
+        (z_{t+1}, h_{t+1}) -> RewardModel -> r_t
 
-    This exposes a Dreamer-style API:
-        observe_step(...)
-        imagine_step(...)
+    During imagination, z_{t+1} is taken as the MDN mixture mean.
     """
 
     def __init__(
@@ -34,6 +32,8 @@ class HaWorldModelAdapter(nn.Module):
         discount: float = 0.99,
         freeze_vae: bool = True,
         freeze_mdn_rnn: bool = True,
+        reward_scale: float = 1.0,
+        reward_bias: float = 0.0,
     ):
         super().__init__()
 
@@ -48,6 +48,9 @@ class HaWorldModelAdapter(nn.Module):
         self.discount = discount
         self.feature_dim = z_dim + h_dim
 
+        self.reward_scale = float(reward_scale)
+        self.reward_bias = float(reward_bias)
+
         if freeze_vae:
             for p in self.vae.parameters():
                 p.requires_grad_(False)
@@ -58,18 +61,6 @@ class HaWorldModelAdapter(nn.Module):
 
     @torch.no_grad()
     def encode_obs(self, obs: torch.Tensor) -> torch.Tensor:
-        """
-        Encode observations with the frozen VAE.
-
-        Expected obs shape:
-            [B, C, H, W]
-
-        This assumes your VAE exposes:
-            mu, logvar = vae.encode(obs)
-
-        If your ConvVAE has a slightly different API, this is the only
-        method we should need to edit.
-        """
         encoded = self.vae.encode(obs)
 
         if isinstance(encoded, tuple):
@@ -93,14 +84,6 @@ class HaWorldModelAdapter(nn.Module):
         action: torch.Tensor,
         next_obs: torch.Tensor,
     ) -> LatentState:
-        """
-        Teacher-forcing step.
-
-        We update the LSTM hidden state using the previous latent z_t
-        and action a_t, but we set z_{t+1} from the true next observation.
-
-        This is useful for training the reward model on replay data.
-        """
         _, _, _, next_h, next_c = self._mdn_step(
             z=prev_state.z,
             action=action,
@@ -110,21 +93,13 @@ class HaWorldModelAdapter(nn.Module):
 
         next_z = self.encode_obs(next_obs)
 
-        return LatentState(z=next_z, h=next_h, c=next_c)
+        return LatentState(
+            z=next_z,
+            h=next_h,
+            c=next_c,
+        )
 
-    def imagine_step(
-        self,
-        state: LatentState,
-        action: torch.Tensor,
-    ) -> ImagineOutput:
-        """
-        Differentiable latent imagination step.
-
-        Important:
-        - We do NOT call sample_from_mdn here.
-        - We use the mixture mean, sum_k pi_k * mu_k, so gradients can flow
-          through the predicted latent dynamics into the action.
-        """
+    def imagine_step(self, state: LatentState, action: torch.Tensor) -> ImagineOutput:
         log_pi, mu, _, next_h, next_c = self._mdn_step(
             z=state.z,
             action=action,
@@ -134,10 +109,13 @@ class HaWorldModelAdapter(nn.Module):
 
         next_z = self._mixture_mean(log_pi=log_pi, mu=mu)
 
-        next_state = LatentState(z=next_z, h=next_h, c=next_c)
+        next_state = LatentState(
+            z=next_z,
+            h=next_h,
+            c=next_c,
+        )
 
-        reward = self.reward_model(next_state.features)
-
+        reward = self.predict_reward(next_state)
         discount = torch.ones_like(reward) * self.discount
 
         return ImagineOutput(
@@ -147,7 +125,8 @@ class HaWorldModelAdapter(nn.Module):
         )
 
     def predict_reward(self, state: LatentState) -> torch.Tensor:
-        return self.reward_model(state.features)
+        raw_reward = self.reward_model(state.features)
+        return self.reward_scale * raw_reward + self.reward_bias
 
     def _mdn_step(
         self,
@@ -156,21 +135,6 @@ class HaWorldModelAdapter(nn.Module):
         h: torch.Tensor,
         c: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        One recurrent MDN-RNN step.
-
-        z:      [B, z_dim]
-        action: [B, action_dim]
-        h:      [num_layers, B, h_dim]
-        c:      [num_layers, B, h_dim]
-
-        Returns:
-            log_pi:  [B, z_dim, K]
-            mu:      [B, z_dim, K]
-            log_std: [B, z_dim, K]
-            next_h:  [num_layers, B, h_dim]
-            next_c:  [num_layers, B, h_dim]
-        """
         x = torch.cat([z, action], dim=-1)
 
         expected = self.z_dim + self.action_dim
@@ -179,28 +143,18 @@ class HaWorldModelAdapter(nn.Module):
                 f"MDN-RNN input has wrong size: got {x.shape[-1]}, expected {expected}."
             )
 
-        x = x.unsqueeze(1)  # [B, 1, z_dim + action_dim]
+        x = x.unsqueeze(1)
 
         log_pi, mu, log_std, hidden = self.mdn_rnn(x, hidden=(h, c))
         next_h, next_c = hidden
 
-        # Remove the time dimension T=1.
-        log_pi = log_pi[:, 0]      # [B, z_dim, K]
-        mu = mu[:, 0]              # [B, z_dim, K]
-        log_std = log_std[:, 0]    # [B, z_dim, K]
+        log_pi = log_pi[:, 0]
+        mu = mu[:, 0]
+        log_std = log_std[:, 0]
 
         return log_pi, mu, log_std, next_h, next_c
 
     @staticmethod
     def _mixture_mean(log_pi: torch.Tensor, mu: torch.Tensor) -> torch.Tensor:
-        """
-        Differentiable expected value of the MDN distribution.
-
-        log_pi: [B, z_dim, K]
-        mu:     [B, z_dim, K]
-
-        returns:
-            next_z: [B, z_dim]
-        """
         pi = torch.exp(log_pi)
         return torch.sum(pi * mu, dim=-1)
