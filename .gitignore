@@ -23,3 +23,5 @@ wandb/
 .DS_Store
 .vscode/
 .idea/
+logs/
+*.log
