@@ -2,26 +2,33 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-.eggs/
-build/
-dist/
-
-# Environments
 .venv/
 venv/
-env/
 .env
 
-# Checkpoints and generated data
-checkpoints/*
-!checkpoints/.gitkeep
-data/
-runs/
-wandb/
+# Data
+data/raw/
+data/latent/
+data/episodes/
+*.npz
 
-# OS/editor
+# Checkpoints and models
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Logs and generated outputs
+logs/
+*.log
+*.gif
+*.mp4
+
+# Notebooks / cache
+.ipynb_checkpoints/
+.pytest_cache/
+
+# OS / IDE
 .DS_Store
 .vscode/
 .idea/
-logs/
-*.log
