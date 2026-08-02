@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-
 import torch
-
 from world_model.api import LatentState
 
 
@@ -62,7 +60,7 @@ def imagine_rollout(
             Number of imagined steps H.
 
         deterministic:
-            If True, use mean actor action. Useful for debugging/evaluation.
+            If True, use mean actor action.
             If False, use reparameterized stochastic action.
 
     Returns:

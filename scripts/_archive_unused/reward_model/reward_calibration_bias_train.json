@@ -1,8 +1,0 @@
-{
-  "scale": 1.0,
-  "bias": -0.054747048765420914,
-  "type": "bias_only_from_train",
-  "mean_true_train": 0.03767824545502663,
-  "mean_pred_train": 0.09242529422044754,
-  "source_file": "checkpoints/reward_model/reward_calibration_train.json"
-}

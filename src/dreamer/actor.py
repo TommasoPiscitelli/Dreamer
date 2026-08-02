@@ -31,9 +31,7 @@ class MLP(nn.Module):
 
 
 class Actor(nn.Module):
-    """
-    Actor for CarRacing in latent feature space.
-
+    """"
     Input:
         features = concat(z, h), shape [B, feature_dim]
 
@@ -113,8 +111,6 @@ class Actor(nn.Module):
 
 class Value(nn.Module):
     """
-    Value model in latent feature space.
-
     Input:
         features = concat(z, h), shape [B, feature_dim]
 

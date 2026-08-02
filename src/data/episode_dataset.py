@@ -1,25 +1,21 @@
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 
 
 class CarRacingEpisodeDataset(Dataset):
     """
-    Loads CarRacing .npz episodes and returns fixed-length subsequences.
+    Dataset di episodi CarRacing.
 
-    Expected .npz format:
-        obs:    [T + 1, 96, 96, 3], uint8
+    Ogni file .npz deve contenere:
+        obs:    [T + 1, 96, 96, 3]
         action: [T, 3]
         reward: [T]
 
-    Returned batch item:
-        obs:     [seq_len + 1, 3, 64, 64], float32 in [0, 1]
-        actions: [seq_len, 3], float32
-        rewards: [seq_len], float32
+    Restituisce sottosequenze di lunghezza seq_len.
     """
 
     def __init__(
@@ -28,31 +24,24 @@ class CarRacingEpisodeDataset(Dataset):
         seq_len: int = 50,
         image_size: int = 64,
     ):
-        self.data_dir = Path(data_dir)
+        self.files = sorted(Path(data_dir).glob("*.npz"))
         self.seq_len = seq_len
         self.image_size = image_size
 
-        self.files = sorted(self.data_dir.glob("*.npz"))
-
         if not self.files:
-            raise FileNotFoundError(f"No .npz files found in {self.data_dir}")
+            raise FileNotFoundError(f"No .npz files found in {data_dir}")
 
-        self.index: list[tuple[int, int]] = []
+        self.index = []
 
         for file_idx, path in enumerate(self.files):
             with np.load(path) as data:
-                T = data["action"].shape[0]
+                T = len(data["action"])
 
-            # Need obs[start : start + seq_len + 1]
-            # and actions/rewards[start : start + seq_len].
-            max_start = T - seq_len
-            for start in range(max_start + 1):
+            for start in range(T - seq_len + 1):
                 self.index.append((file_idx, start))
 
         if not self.index:
-            raise ValueError(
-                f"No valid subsequences. Try smaller seq_len. Got seq_len={seq_len}"
-            )
+            raise ValueError(f"No valid subsequences with seq_len={seq_len}")
 
     def __len__(self):
         return len(self.index)
@@ -61,16 +50,17 @@ class CarRacingEpisodeDataset(Dataset):
         file_idx, start = self.index[idx]
         path = self.files[file_idx]
 
+        end = start + self.seq_len
+
         with np.load(path) as data:
-            obs = data["obs"][start : start + self.seq_len + 1]
-            actions = data["action"][start : start + self.seq_len]
-            rewards = data["reward"][start : start + self.seq_len]
+            obs = data["obs"][start : end + 1]
+            actions = data["action"][start:end]
+            rewards = data["reward"][start:end]
 
-        # obs: [T+1, H, W, C] uint8 -> [T+1, C, H, W] float32 in [0, 1]
         obs = torch.from_numpy(obs).float() / 255.0
-        obs = obs.permute(0, 3, 1, 2).contiguous()
+        obs = obs.permute(0, 3, 1, 2)
 
-        if obs.shape[-1] != self.image_size or obs.shape[-2] != self.image_size:
+        if self.image_size is not None:
             obs = F.interpolate(
                 obs,
                 size=(self.image_size, self.image_size),
@@ -78,11 +68,8 @@ class CarRacingEpisodeDataset(Dataset):
                 align_corners=False,
             )
 
-        actions = torch.from_numpy(actions.astype(np.float32))
-        rewards = torch.from_numpy(rewards.astype(np.float32))
-
         return {
             "obs": obs,
-            "actions": actions,
-            "rewards": rewards,
+            "actions": torch.from_numpy(actions.astype(np.float32)),
+            "rewards": torch.from_numpy(rewards.astype(np.float32)),
         }

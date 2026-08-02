@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from data.latent_state_dataset import LatentStateDataset
 from world_model.api import LatentState
-from world_model.load_legacy import load_legacy_world_model
+from world_model.model import load_legacy_world_model
 from dreamer import (
     Actor,
     Value,

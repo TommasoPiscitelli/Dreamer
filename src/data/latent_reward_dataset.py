@@ -7,45 +7,39 @@ from torch.utils.data import Dataset
 
 class LatentRewardDataset(Dataset):
     """
-    Dataset over cached latent features.
+    Dataset di feature latenti e reward.
 
-    Expected .npz format:
+    Ogni file .npz deve contenere:
         features: [T, feature_dim]
         reward:   [T]
-
-    Returns:
-        features: [feature_dim]
-        reward:   [1]
     """
 
     def __init__(self, data_dir: str | Path):
-        self.data_dir = Path(data_dir)
-        self.files = sorted(self.data_dir.glob("*.npz"))
+        data_dir = Path(data_dir)
+        files = sorted(data_dir.glob("*.npz"))
 
-        if not self.files:
-            raise FileNotFoundError(f"No .npz files found in {self.data_dir}")
+        if not files:
+            raise FileNotFoundError(f"No .npz files found in {data_dir}")
 
-        self.index: list[tuple[int, int]] = []
+        all_features = []
+        all_rewards = []
 
-        for file_idx, path in enumerate(self.files):
+        for path in files:
             with np.load(path) as data:
-                T = data["reward"].shape[0]
+                features = data["features"].astype(np.float32)
+                rewards = data["reward"].astype(np.float32).reshape(-1, 1)
 
-            for t in range(T):
-                self.index.append((file_idx, t))
+            all_features.append(features)
+            all_rewards.append(rewards)
+
+        self.features = torch.from_numpy(np.concatenate(all_features, axis=0))
+        self.rewards = torch.from_numpy(np.concatenate(all_rewards, axis=0))
 
     def __len__(self):
-        return len(self.index)
+        return len(self.features)
 
     def __getitem__(self, idx):
-        file_idx, t = self.index[idx]
-        path = self.files[file_idx]
-
-        with np.load(path) as data:
-            features = data["features"][t].astype(np.float32)
-            reward = np.asarray([data["reward"][t]], dtype=np.float32)
-
         return {
-            "features": torch.from_numpy(features),
-            "reward": torch.from_numpy(reward),
+            "features": self.features[idx],
+            "reward": self.rewards[idx],
         }

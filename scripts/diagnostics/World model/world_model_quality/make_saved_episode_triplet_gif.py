@@ -11,21 +11,7 @@ import torch
 from world_model.load_legacy import load_legacy_world_model
 
 
-# Questo script è self-contained:
-# episodio salvato -> VAE reconstruction -> WM open-loop -> GIF.
-# Non dipende più da representation_transition_model.py.
 
-
-def get_state_z(state):
-    """
-    Restituisce il latente z dallo stato del world model.
-
-    Nel nostro codice lo stato è rappresentato come oggetto con campi:
-        state.z
-        state.h
-        state.c
-    """
-    return state.z
 
 
 FRAME_KEYS = [

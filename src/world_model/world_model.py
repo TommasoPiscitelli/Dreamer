@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from world_model.api import LatentState, ImagineOutput
-from world_model.reward_model import RewardModel
+from world_model.reward_model import RewardClassifierExpectedReward
 
 
 class HaWorldModelAdapter(nn.Module):
@@ -24,7 +24,7 @@ class HaWorldModelAdapter(nn.Module):
         self,
         vae: nn.Module,
         mdn_rnn: nn.Module,
-        reward_model: RewardModel,
+        reward_model: RewardClassifierExpectedReward,
         z_dim: int = 32,
         h_dim: int = 256,
         action_dim: int = 3,

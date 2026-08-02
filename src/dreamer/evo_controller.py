@@ -1,75 +1,8 @@
 import json
 from pathlib import Path
-
 import numpy as np
 import torch
 import torch.nn as nn
-
-
-def _is_numeric_sequence(x):
-    if not isinstance(x, list):
-        return False
-    if len(x) == 0:
-        return False
-    return all(isinstance(v, (int, float)) for v in x)
-
-
-def _find_numeric_vector(obj):
-    """
-    Cerca ricorsivamente il vettore dei parametri dentro il JSON.
-    Supporta sia JSON come lista diretta, sia dizionari con chiavi tipo
-    params, theta, weights, solution, best, controller.
-    """
-    if _is_numeric_sequence(obj):
-        return np.asarray(obj, dtype=np.float32)
-
-    if isinstance(obj, dict):
-        preferred_keys = [
-            "params",
-            "theta",
-            "weights",
-            "solution",
-            "best",
-            "best_params",
-            "controller",
-            "controller_params",
-        ]
-
-        for k in preferred_keys:
-            if k in obj:
-                try:
-                    v = _find_numeric_vector(obj[k])
-                    if v is not None:
-                        return v
-                except Exception:
-                    pass
-
-        candidates = []
-        for v in obj.values():
-            try:
-                vv = _find_numeric_vector(v)
-                if vv is not None:
-                    candidates.append(vv)
-            except Exception:
-                pass
-
-        if candidates:
-            return max(candidates, key=len)
-
-    if isinstance(obj, list):
-        candidates = []
-        for v in obj:
-            try:
-                vv = _find_numeric_vector(v)
-                if vv is not None:
-                    candidates.append(vv)
-            except Exception:
-                pass
-
-        if candidates:
-            return max(candidates, key=len)
-
-    return None
 
 
 def load_controller_weights(json_path, input_dim=288, action_dim=3):
@@ -78,65 +11,23 @@ def load_controller_weights(json_path, input_dim=288, action_dim=3):
     with open(json_path, "r") as f:
         obj = json.load(f)
 
-    # Caso 1: JSON con W/b espliciti.
-    if isinstance(obj, dict):
-        w_key = None
-        b_key = None
-
-        for k in ["W", "w", "weight", "weights", "matrix"]:
-            if k in obj:
-                w_key = k
-                break
-
-        for k in ["b", "bias", "biases"]:
-            if k in obj:
-                b_key = k
-                break
-
-        if w_key is not None and b_key is not None:
-            W = np.asarray(obj[w_key], dtype=np.float32)
-            b = np.asarray(obj[b_key], dtype=np.float32)
-
-            if W.shape == (action_dim, input_dim):
-                W = W.T
-
-            if W.shape != (input_dim, action_dim):
-                raise ValueError(f"Unexpected W shape: {W.shape}")
-
-            if b.shape != (action_dim,):
-                b = b.reshape(action_dim)
-
-            return W, b
-
-    # Caso 2: JSON come vettore piatto.
-    theta = _find_numeric_vector(obj)
-
-    if theta is None:
-        raise ValueError(f"Could not find numeric parameter vector in {json_path}")
+    theta = np.asarray(obj["params"], dtype=np.float32)
 
     needed = input_dim * action_dim + action_dim
 
-    if len(theta) < needed:
+    if len(theta) != needed:
         raise ValueError(
-            f"Controller vector too short: len={len(theta)}, required at least {needed}"
+            f"Unexpected controller size: got {len(theta)}, expected {needed}"
         )
-
-    if len(theta) > needed:
-        print(
-            f"[warning] controller vector has len={len(theta)}, "
-            f"using first {needed} parameters"
-        )
-        theta = theta[:needed]
 
     W = theta[: input_dim * action_dim].reshape(input_dim, action_dim)
-    b = theta[input_dim * action_dim : input_dim * action_dim + action_dim]
+    b = theta[input_dim * action_dim :]
 
-    return W.astype(np.float32), b.astype(np.float32)
-
+    return W, b
 
 class EvoController(nn.Module):
     """
-    Wrapper PyTorch per il controller evolutivo del vecchio progetto World Models.
+    Controller evolutivo lineare.
 
     Input:
         features = concat(z, h), shape [B, 288]
@@ -148,11 +39,8 @@ class EvoController(nn.Module):
     def __init__(self, W, b):
         super().__init__()
 
-        W = torch.as_tensor(W, dtype=torch.float32)
-        b = torch.as_tensor(b, dtype=torch.float32)
-
-        self.register_buffer("W", W)
-        self.register_buffer("b", b)
+        self.register_buffer("W", torch.as_tensor(W, dtype=torch.float32))
+        self.register_buffer("b", torch.as_tensor(b, dtype=torch.float32))
 
     @classmethod
     def from_json(cls, json_path, input_dim=288, action_dim=3):
