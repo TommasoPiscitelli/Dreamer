@@ -4,13 +4,12 @@ import random
 
 import numpy as np
 import torch
-from dreamer.reward_classifier_expected import RewardClassifierExpectedReward
+
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from PIL import Image, ImageDraw
 
 from data.latent_state_dataset import LatentStateDataset
 from world_model.api import LatentState
+from world_model.reward_model import RewardClassifierExpectedReward
 from world_model.model import load_legacy_world_model
 from dreamer import (
     Actor,
@@ -138,13 +137,6 @@ def save_behavior_checkpoint(
         ckpt["value_opt_state_dict"] = value_opt.state_dict()
 
     torch.save(ckpt, path)
-
-
-
-
-
-
-
 
 
 
