@@ -16,19 +16,10 @@ A central choice in this project is the use of a **pre-trained and frozen world 
 
 ---
 
-## Main Idea
+## References
 
-The world model receives a latent state of the environment and an action selected by the agent, and predicts the next latent state. Starting from these imagined transitions, it is possible to build rollouts in latent space and use them to train a policy.
+[1] D. Ha and J. Schmidhuber, World Models, arXiv:1803.10122, 2018.
 
-The conceptual pipeline is:
+[2] D. Hafner, T. Lillicrap, I. Fischer, R. Villegas, D. Ha, H. Lee, and J. Davidson, Learning Latent Dynamics for Planning from Pixels, Proceedings of the 36th International Conference on Machine Learning, PMLR, 2019.
 
-```text
-saved real latent states
-        ↓
-frozen world model
-        ↓
-imagined rollouts
-        ↓
-estimated future rewards
-        ↓
-policy update
+[3] D. Hafner, T. Lillicrap, J. Ba, and M. Norouzi, Dream to Control: Learning Behaviors by Latent Imagination, International Conference on Learning Representations, 2020.
