@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from world_model.load_legacy import load_legacy_world_model
+from world_model.model import load_legacy_world_model
 
 
 

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from world_model.load_legacy import load_legacy_world_model
+from world_model.model import load_legacy_world_model
 from world_model.api import LatentState
 from dreamer.actor_critic import Actor
 from dreamer.evo_controller import EvoController

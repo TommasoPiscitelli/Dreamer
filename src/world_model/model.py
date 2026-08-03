@@ -27,6 +27,7 @@ def load_legacy_world_model(
     vae_ckpt,
     mdn_rnn_ckpt,
     reward_ckpt,
+    reward_calibration=None,
     device="cpu",
 ) -> HaWorldModelAdapter:
     """
@@ -34,6 +35,10 @@ def load_legacy_world_model(
 
         VAE + MDN-RNN + RewardClassifierExpectedReward
     """
+
+    # Kept only for backward compatibility.
+    # Reward calibration is ignored because we use the reward classifier.
+    _ = reward_calibration
 
     device = torch.device(device)
 
@@ -59,8 +64,7 @@ def load_legacy_world_model(
     print(f"Using reward classifier: {reward_ckpt}")
 
     reward_model = RewardClassifierExpectedReward(
-        classifier_ckpt=reward_ckpt,
-        device=device,
+        checkpoint_path=reward_ckpt,
     ).to(device)
 
     world_model = HaWorldModelAdapter(
